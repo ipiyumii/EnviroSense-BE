@@ -18,11 +18,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
 
-
-
 app.config['JWT_SECRET_KEY'] = os.urandom(24)
 jwt = JWTManager(app)
-
 
 @app.route('/data', methods=['POST', 'GET'])
 def receive_data():
@@ -35,9 +32,9 @@ def receive_data():
             f.write("\n")
 
         if insert_bindata(data):
-            return "Sensor data processed and stored successfully"
+            return "Sensor data saved"
         else:
-            return "Error: Data could not be processed", 500
+            return "Error: error saving sensor data  ", 500
 
 
 # handle registration
@@ -46,7 +43,6 @@ def register():
     try:
         data = request.get_json()
         print("Received data:", data)
-        logger.debug("Received data: %s", data)
 
         response, status_code = insert_user(data)
 
@@ -58,7 +54,6 @@ def register():
         return jsonify(response), status_code
 
     except Exception as e:
-        logger.error("Error in /register route: %s", e)
         return jsonify({"message": "Internal server error"}), 500
 
 
@@ -68,7 +63,6 @@ def login():
     try:
         data = request.get_json()
         print("Received data:", data)
-        logger.debug("Received data: %s", data)
 
         response, status_code = authenticate_user(data)
 
@@ -80,7 +74,6 @@ def login():
         return jsonify(response), status_code
 
     except Exception as e:
-        # print(f"Error in /register route: {e}")
         logger.error("Error in /login route: %s", e)
         return jsonify({"message": "Internal server error"}), 500
 
@@ -187,8 +180,6 @@ def update_user_route():
 
     return jsonify(response), status_code
 
-
-
 @app.route('/updatepwd', methods=['POST'])
 @jwt_required()
 def update_pwd():
@@ -212,7 +203,6 @@ def update_pwd():
             return jsonify(response), status_code
 
 def convert_to_serializable(data):
-    """Convert non-serializable data to JSON-compatible formats."""
     if isinstance(data, list):
         return [convert_to_serializable(item) for item in data]
     elif isinstance(data, dict):
@@ -237,11 +227,10 @@ def uploaded_file(filename):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
 @app.route('/uploadprofilepicture', methods=['POST'])
 @jwt_required()
 def upload_profile_picture():
-    username = get_jwt_identity()  # Get the username from the JWT token
+    username = get_jwt_identity()
 
     if 'profilePicture' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -256,15 +245,13 @@ def upload_profile_picture():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(file_path)
 
-        file_url = f'/uploads/{filename}'
+        file_url = os.path.join('/' + app.config['UPLOAD_FOLDER'], filename)
 
-        # Save file_url to user's profile in the database
         save_profile_picture(username, file_url)
 
         return jsonify({'file_url': file_url}), 200
     else:
         return jsonify({'error': 'File type not allowed'}), 400
-
 
 if __name__ == "__main__":
     app.run(debug=True)

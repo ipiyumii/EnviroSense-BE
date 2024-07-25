@@ -89,26 +89,23 @@ def retrieve_bindata():
 
 
 
-def get_user(user):
+def get_user(username):
     connection = db_con()
     if not connection:
+        print("Failed to connect to the database")
         return False
 
     try:
         cur = connection.cursor(dictionary=True)
-
-        # query = "SELECT * FROM Admin WHERE username = %s"
-
-        query = "SELECT a.*, p.* FROM Admin a LEFT JOIN profile_pictures p ON a.username = p.username WHERE a.username = %s;"
-        cur.execute(query, (user,))
+        query = "SELECT a.email,a.name,a.username,a.password,a.phone, p.file_path FROM Admin a LEFT JOIN profile_pictures p ON a.username = p.username WHERE a.username = %s;"
+        cur.execute(query, (username,))
         userData = cur.fetchone()
-        cur.fetchall()
 
-        if user:
-            print("User exists")
+        if userData:
+            print("User data retrieved:", userData)
             return userData
         else:
-            print("User does not exist")
+            print("User does not exist or no data found")
             return False
 
     except Exception as e:
@@ -262,22 +259,21 @@ def save_profile_picture(username, file_url):
     try:
         with connection.cursor(dictionary=True) as cur:
 
-            query = "SELECT * FROM profile_pictures WHERE username = %s"
-            cur.execute(query, (username))
+            query = "SELECT file_path FROM profile_pictures WHERE username = %s"
+            cur.execute(query, (username,))
             user = cur.fetchone()
 
-            if(user):
+            if user:
                 query = "UPDATE profile_pictures SET file_path = %s WHERE username = %s"
-                cur.execute(query, (file_url,username))
+                cur.execute(query, (file_url, username))
                 connection.commit()
-                return {"message": "photo updated successfully"}, 200
+                return {"message": "Profile picture updated successfully"}, 200
 
             else:
                 query = "INSERT INTO profile_pictures (username, file_path) VALUES (%s, %s)"
                 cur.execute(query, (username, file_url))
                 connection.commit()
-                return {"message": "User updated successfully"}, 200
-
+                return {"message": "Profile picture added successfully"}, 200
 
     except Error as e:
         print(f"Error: {e}")
@@ -288,5 +284,3 @@ def save_profile_picture(username, file_url):
             connection.close()
             print("MySQL connection is closed")
 
-# user_id = get_current_user_id()  # Implement this function to get the current user ID
-# save_profile_picture(user_id, file_url)
