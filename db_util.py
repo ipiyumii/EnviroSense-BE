@@ -23,7 +23,6 @@ def db_con():
         print(f"Error: {e}")
         return None
 
-
 def insert_bindata(data):
     connection = db_con()
     if not connection:
@@ -53,7 +52,6 @@ def insert_bindata(data):
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-
 
 def retrieve_bindata():
     connection = db_con()
@@ -87,8 +85,6 @@ def retrieve_bindata():
     finally:
         connection.close()
 
-
-
 def get_user(username):
     connection = db_con()
     if not connection:
@@ -105,7 +101,7 @@ def get_user(username):
             print("User data retrieved:", userData)
             return userData
         else:
-            print("User does not exist or no data found")
+            print("User does not exist")
             return False
 
     except Exception as e:
@@ -117,18 +113,16 @@ def get_user(username):
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-            print("MySQL connection is closed in getUser")
-
+            print("mysql connection is closed in getUser")
 
 def insert_user(data):
     # connection = None
     # cur = None
     connection = db_con()
     if not connection:
-        return {"message": "Database connection failed"}, 500
+        return {"message": "db connection failed"}, 500
 
     try:
-
         with connection.cursor(dictionary=True) as cur:
             email = data.get('email')
             username = data.get('username')
@@ -151,8 +145,6 @@ def insert_user(data):
                 if user:
                     print("username has already taken!")
                     return {"message": "username has already taken!"}, 400
-
-
                 else:
                     phone = data.get('phone')
                     # username = data.get('username')
@@ -163,27 +155,25 @@ def insert_user(data):
                     cur.execute(query, (email, phone, username, password_hash))
 
                     connection.commit()
-                    print("Record inserted successfully into Admin table")
-                    return {"message": "User registered successfully"}, 200
+                    print("successfully inserted into Admin table")
+                    return {"message": "User registered"}, 200
 
     except Exception as e:
         print(f"Error: {e}")
-        return {"message": "An error occurred while inserting user"}, 500
+        return {"message": "error occurred while inserting user"}, 500
 
     finally:
         if cur:
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-            print("MySQL connection is closed in insertUser")
-
-
+            print("mysql connection is closed in insertUser")
 
 def update_user(data, current_username):
     # connection = None
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
+        return {"error": "db connection failed"}, 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
@@ -193,7 +183,6 @@ def update_user(data, current_username):
             name = data.get('name')
 
             #check if the new username is available
-
             if new_username != current_username:
                 query = "SELECT * FROM Admin WHERE username = %s"
                 cur.execute(query, (new_username,))
@@ -203,27 +192,24 @@ def update_user(data, current_username):
                 if user:
                     return {"message": "username has already taken!"}, 400
 
-
             query = "UPDATE Admin SET username = %s , email = %s, phone = %s, name = %s WHERE username = %s"
             cur.execute(query, (new_username, email, phone, name, current_username))
             connection.commit()
-            return {"message": "User updated successfully"}, 200
+            return {"message": "user updated successfully"}, 200
 
     except Error as e:
         print(f"Error: {e}")
-        return {"error": "An error occurred while updating the user"}, 500
+        return {"error": "error occurred while updating the user"}, 500
 
     finally:
         if connection.is_connected():
             connection.close()
-            print("MySQL connection is closed")
-
-
+            print("mysql connection is closed")
 
 def update_password(data):
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
+        return {"error": "db connection failed"}, 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
@@ -241,15 +227,14 @@ def update_password(data):
 
     except Error as e:
         print(f"Error: {e}")
-        return {"error": "An error occurred while updating the user"}, 500
+        return {"error": "error occurred while updating the user"}, 500
 
     finally:
         if cur:
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-            print("MySQL connection is closed in getUser")
-
+            print("sql connection is closed in getUser")
 
 def save_profile_picture(username, file_url):
     connection = db_con()
@@ -267,20 +252,20 @@ def save_profile_picture(username, file_url):
                 query = "UPDATE profile_pictures SET file_path = %s WHERE username = %s"
                 cur.execute(query, (file_url, username))
                 connection.commit()
-                return {"message": "Profile picture updated successfully"}, 200
+                return {"message": "pp updated successfully"}, 200
 
             else:
                 query = "INSERT INTO profile_pictures (username, file_path) VALUES (%s, %s)"
                 cur.execute(query, (username, file_url))
                 connection.commit()
-                return {"message": "Profile picture added successfully"}, 200
+                return {"message": "pp added successfully"}, 200
 
     except Error as e:
         print(f"Error: {e}")
-        return {"error": "An error occurred while updating the user"}, 500
+        return {"error": "error occurred while updating the user"}, 500
 
     finally:
         if connection.is_connected():
             connection.close()
-            print("MySQL connection is closed")
+            print("sql connection is closed")
 
