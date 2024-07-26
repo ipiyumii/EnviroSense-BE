@@ -10,7 +10,9 @@ from google.oauth2 import id_token
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 import os
 import logging
-from ml_script import update_predictions
+
+from ml_scripts.predictions import update_predictions
+from ml_scripts.script import show_bindata
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -202,18 +204,23 @@ def update_pwd():
         if status_code == 200:
             return jsonify(response), status_code
 
-def convert_to_serializable(data):
-    if isinstance(data, list):
-        return [convert_to_serializable(item) for item in data]
-    elif isinstance(data, dict):
-        return {key: convert_to_serializable(value) for key, value in data.items()}
-    elif isinstance(data, (datetime, time)):
-        return data.strftime('%Y-%m-%d %H:%M:%S') if isinstance(data, datetime) else data.strftime('%H:%M:%S')
-    return data
+# def convert_to_serializable(data):
+#     if isinstance(data, list):
+#         return [convert_to_serializable(item) for item in data]
+#     elif isinstance(data, dict):
+#         return {key: convert_to_serializable(value) for key, value in data.items()}
+#     elif isinstance(data, (datetime, time)):
+#         return data.strftime('%Y-%m-%d %H:%M:%S') if isinstance(data, datetime) else data.strftime('%H:%M:%S')
+#     return data
 
 @app.route('/gettimes', methods=['GET'])
 def get_predictions():
     response = update_predictions()
+    return jsonify(response)
+
+@app.route('/getbindata', methods=['GET'])
+def get_getbindata():
+    response = show_bindata()
     return jsonify(response)
 
 UPLOAD_FOLDER = 'uploads/'
@@ -252,6 +259,10 @@ def upload_profile_picture():
         return jsonify({'file_url': file_url}), 200
     else:
         return jsonify({'error': 'File type not allowed'}), 400
+
+@app.route('/charts/<path:filename>')
+def static_files(filename):
+    return send_from_directory('static', filename)
 
 if __name__ == "__main__":
     app.run(debug=True)
