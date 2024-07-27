@@ -1,9 +1,13 @@
+import pandas as pd
 from flask import Flask, request, jsonify,send_from_directory
 from flask_cors import CORS
 import json
+from io import StringIO
+
 from datetime import datetime, time
 from werkzeug.utils import secure_filename
-from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture
+from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
+    retrieve_bindata
 from data_auth import authenticate_user
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -263,6 +267,32 @@ def upload_profile_picture():
 @app.route('/charts/<path:filename>')
 def static_files(filename):
     return send_from_directory('static', filename)
+
+@app.route('/api/waste-data', methods=['GET'])
+def get_waste_data():
+    # Get the data from the database
+    df = retrieve_bindata()
+
+    # Convert the 'timestamp' column to datetime if not already
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    # Get query parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    bin_id = request.args.get('bin_id')
+
+    # Filter data based on query parameters
+    if start_date and end_date:
+        mask = (df['timestamp'] >= start_date) & (df['timestamp'] <= end_date)
+        filtered_df = df[mask]
+    else:
+        filtered_df = df
+
+    if bin_id:
+        filtered_df = filtered_df[filtered_df['bin_no'] == bin_id]
+
+    result = filtered_df.to_dict(orient='records')
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(debug=True)

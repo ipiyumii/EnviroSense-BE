@@ -12,6 +12,7 @@ def update_predictions():
         print("Columns available before preparation:", data.columns)
         print("Data retrieved:", data.head())
 
+
         original_data = data.copy()
 
         os.makedirs('charts', exist_ok=True)
@@ -19,22 +20,26 @@ def update_predictions():
         bin1_df, bin2_df = fetch_and_split_data(data)
         predicted_bin1_fill_times = predict_fill_times(bin1_df)
         predicted_bin2_fill_times = predict_fill_times(bin2_df)
+
+        time_only_bin1 = format_times_for_frontend(predicted_bin1_fill_times)
+        time_only_bin2 = format_times_for_frontend(predicted_bin2_fill_times)
+
         create_gantt_chart(predicted_bin1_fill_times, predicted_bin2_fill_times)
         create_calendar_heatmap(predicted_bin1_fill_times, predicted_bin2_fill_times)
         create_interactive_timeline_chart(predicted_bin1_fill_times, predicted_bin2_fill_times)
 
-        decisions = linear_regression_decision(original_data)
+        # decisions = linear_regression_decision(original_data)
 
         return {
-            'bin1_next_day_prediction': predicted_bin1_fill_times,
-            'bin2_next_day_prediction': predicted_bin2_fill_times,
-            'decisions': decisions
+            'bin1_next_day_prediction': time_only_bin1,
+            'bin2_next_day_prediction': time_only_bin2,
+            # 'decisions': decisions
         }
     else:
         return {
             'bin1_next_day_prediction': None,
             'bin2_next_day_prediction': None,
-            'decisions': "No data available"
+            # 'decisions': "No data available"
         }
 
 def fetch_and_split_data(df):
@@ -50,6 +55,10 @@ def fetch_and_split_data(df):
     print("Bin 2 DataFrame columns:", bin2_df.columns)
 
     return bin1_df, bin2_df
+
+def format_times_for_frontend(predicted_times):
+    # Convert list of datetime objects to time-only strings
+    return [time.strftime('%H:%M') for time in predicted_times]
 
 def round_to_nearest_10_minutes(dt):
     minutes = dt.minute
@@ -83,8 +92,8 @@ def predict_fill_times(df,min_count=10):
     for hour_min in frequent_hour_minute:
         hour, minute = map(int, hour_min.split(':'))
         next_day_time = last_date + timedelta(days=1) + timedelta(hours=hour, minutes=minute)
-        predicted_times.append(next_day_time.strftime('%Y-%m-%d %H:%M:%S'))
-
+        # predicted_times.append(next_day_time.strftime('%Y-%m-%d %H:%M:%S'))
+        predicted_times.append(next_day_time)
     print(
         f"Predicted fill times for the next day for bin {df['bin_no'].iloc[0]}: {predicted_times}")
     return predicted_times
