@@ -61,9 +61,6 @@ def retrieve_bindata():
     try:
         engine = create_engine('mysql+mysqlconnector://root:root@localhost:3306/EnviroSenseAI_db')
 
-        date_15_days_ago = datetime.now() - timedelta(days=15)
-        date_15_days_ago_str = date_15_days_ago.strftime('%Y-%m-%d %H:%M:%S')
-
         query = "SELECT timestamp, bin_no FROM Bin_Data;"
 
         # query = f"""
@@ -72,11 +69,32 @@ def retrieve_bindata():
         # """
 
         df = pd.read_sql(query, engine)
-
-        print("Data fetched successfully")
-        print("Data sample:", df.head())  # Print sample of the DataFrame
-        print("Columns:", df.columns)
         return df
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        return None
+
+    finally:
+        connection.close()
+
+
+def fetch_bin_name_mapping():
+    connection = db_con()
+    if not connection:
+        return None
+
+    try:
+        query = "SELECT bin_no, bin_name FROM bins"
+
+        cursor = connection.cursor()
+        cursor.execute(query)
+
+        bin_name_mapping = dict(cursor.fetchall())
+
+        cursor.close()
+        connection.close()
+
+        return bin_name_mapping
 
     except Exception as e:
         print(f"Error occurred: {e}")

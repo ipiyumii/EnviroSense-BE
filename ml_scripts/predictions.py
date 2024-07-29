@@ -6,55 +6,45 @@ from matplotlib import pyplot as plt, patches
 import plotly.express as px
 from db_util import retrieve_bindata
 
+
 def update_predictions():
+    bin_predictions = []
     data = retrieve_bindata()
     if data is not None and not data.empty:
-        print("Columns available before preparation:", data.columns)
         print("Data retrieved:", data.head())
-
-
-        original_data = data.copy()
 
         os.makedirs('charts', exist_ok=True)
 
-        bin1_df, bin2_df = fetch_and_split_data(data)
-        predicted_bin1_fill_times = predict_fill_times(bin1_df)
-        predicted_bin2_fill_times = predict_fill_times(bin2_df)
+        bin_data_dict = fetch_and_split_data(data)
 
-        time_only_bin1 = format_times_for_frontend(predicted_bin1_fill_times)
-        time_only_bin2 = format_times_for_frontend(predicted_bin2_fill_times)
+        unique_bins = data['bin_no'].unique()
 
-        create_gantt_chart(predicted_bin1_fill_times, predicted_bin2_fill_times)
-        create_calendar_heatmap(predicted_bin1_fill_times, predicted_bin2_fill_times)
-        create_interactive_timeline_chart(predicted_bin1_fill_times, predicted_bin2_fill_times)
+        for bin_no, bin_df in bin_data_dict.items():
+            predicted_fill_times = predict_fill_times(bin_df)
+            time_only = format_times_for_frontend(predicted_fill_times)
 
-        # decisions = linear_regression_decision(original_data)
-
-        return {
-            'bin1_next_day_prediction': time_only_bin1,
-            'bin2_next_day_prediction': time_only_bin2,
-            # 'decisions': decisions
-        }
+            bin_predictions.append({
+                'bin_no': bin_no,
+                'predictions': time_only
+            })
+        return bin_predictions
     else:
-        return {
-            'bin1_next_day_prediction': None,
-            'bin2_next_day_prediction': None,
-            # 'decisions': "No data available"
-        }
+        return []
+
 
 def fetch_and_split_data(df):
     df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
     df.dropna(subset=['timestamp', 'bin_no'], inplace=True)
     df['timestamp'] = df['timestamp'].dt.tz_localize(None)
+
     df.set_index('timestamp', inplace=True)
 
-    bin1_df = df[df['bin_no'] == "A4:CF:12:34:56:78"]
-    bin2_df = df[df['bin_no'] == "B8:27:EB:98:76:54"]
+    grouped_data = df.groupby('bin_no')
 
-    print("Bin 1 DataFrame columns:", bin1_df.columns)
-    print("Bin 2 DataFrame columns:", bin2_df.columns)
+    bin_data_dict = {bin_no: group for bin_no, group in grouped_data}
 
-    return bin1_df, bin2_df
+    return bin_data_dict
+
 
 def format_times_for_frontend(predicted_times):
     # Convert list of datetime objects to time-only strings
@@ -68,22 +58,22 @@ def round_to_nearest_10_minutes(dt):
         dt = dt + timedelta(hours=1)
     return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
 
+
 def predict_fill_times(df,min_count=10):
-    df = df.copy()
+    df.index = pd.to_datetime(df.index)
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise ValueError("Index is not a DatetimeIndex")
 
     df['rounded_timestamp'] = df.index.to_series().apply(round_to_nearest_10_minutes)
-
     df['hour'] = df['rounded_timestamp'].dt.hour
     df['minute'] = df['rounded_timestamp'].dt.minute
     df['hour_minute'] = df['hour'].astype(str).str.zfill(2) + ':' + df['minute'].astype(str).str.zfill(2)
+
     hour_minute_counts = df['hour_minute'].value_counts()
-    print(f"Hour-Minute counts for bin {df['bin_no'].iloc[0]}: {hour_minute_counts}")
 
     frequent_hour_minute = hour_minute_counts[hour_minute_counts >= min_count].index.tolist()
-    print(f"Frequent hour-minute combinations for bin {df['bin_no'].iloc[0]}: {frequent_hour_minute}")
 
     if not frequent_hour_minute:
-        print(f"No hour-minute combinations meet the minimum count requirement for bin {df['bin_no'].iloc[0]}.")
         return []
 
     predicted_times = []
@@ -92,37 +82,17 @@ def predict_fill_times(df,min_count=10):
     for hour_min in frequent_hour_minute:
         hour, minute = map(int, hour_min.split(':'))
         next_day_time = last_date + timedelta(days=1) + timedelta(hours=hour, minutes=minute)
-        # predicted_times.append(next_day_time.strftime('%Y-%m-%d %H:%M:%S'))
         predicted_times.append(next_day_time)
     print(
         f"Predicted fill times for the next day for bin {df['bin_no'].iloc[0]}: {predicted_times}")
     return predicted_times
 
-def calculate_pred(df):
-    if 'timestamp' not in df.columns:
-        raise KeyError("The 'timestamp' column is missing from the DataFrame")
 
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+def linear_regression_decision(threshold_multiplier=1):
+    df = retrieve_bindata()
+    if df is not None and not df.empty:
+        print("Data retrieved:", df.head())
 
-    def predict_timestamps(bin_data):
-        bin_data = bin_data.sort_values('timestamp')
-        bin_data['Time_Diff'] = bin_data['timestamp'].diff().dt.total_seconds().dropna()
-        moving_avg = bin_data['Time_Diff'].rolling(window=3).mean().dropna()
-        last_timestamp = bin_data['timestamp'].iloc[-1]
-        predictions = []
-        for i in range(3):
-            next_timestamp = last_timestamp + timedelta(seconds=moving_avg.iloc[-1])
-            predictions.append(next_timestamp)
-            last_timestamp = next_timestamp
-        return predictions
-
-    predictions = df.groupby('bin_no').apply(predict_timestamps).reset_index()
-    predictions.columns = ['bin_no', 'Predicted Timestamps']
-    print(predictions)
-
-    return predictions
-
-def linear_regression_decision(df,threshold_multiplier=2):
     df['date'] = df['timestamp'].dt.date
     emptying_counts_per_day = df.groupby(['bin_no', 'date']).size().reset_index(name='emptying_count')
 
@@ -139,11 +109,11 @@ def linear_regression_decision(df,threshold_multiplier=2):
 
         if change_needed:
             bins_to_change.append(bin_no)
-
+            response = {
+                "decisions": f"Change needed for bins: {', '.join(bins_to_change)}" if bins_to_change else "No change needed"
+            }
     if bins_to_change:
-        return f"Change needed for bins: {', '.join(bins_to_change)}"
-    else:
-        return "No change needed"
+        return response
 
 def create_gantt_chart(predicted_bin1_fill_times, predicted_bin2_fill_times):
     def to_datetime(times):

@@ -2,9 +2,6 @@ import pandas as pd
 from flask import Flask, request, jsonify,send_from_directory
 from flask_cors import CORS
 import json
-from io import StringIO
-
-from datetime import datetime, time
 from werkzeug.utils import secure_filename
 from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
     retrieve_bindata
@@ -14,12 +11,13 @@ from google.oauth2 import id_token
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 import os
 import logging
-
-from ml_scripts.predictions import update_predictions
+from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from ml_scripts.script import show_bindata
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
@@ -31,7 +29,6 @@ jwt = JWTManager(app)
 def receive_data():
     if request.method == 'POST':
         data = request.json
-        print("Received data:", data)
 
         with open("sensor_data.json", "a") as f:
             json.dump(data, f)
@@ -48,7 +45,6 @@ def receive_data():
 def register():
     try:
         data = request.get_json()
-        print("Received data:", data)
 
         response, status_code = insert_user(data)
 
@@ -68,7 +64,6 @@ def register():
 def login():
     try:
         data = request.get_json()
-        print("Received data:", data)
 
         response, status_code = authenticate_user(data)
 
@@ -222,6 +217,11 @@ def get_predictions():
     response = update_predictions()
     return jsonify(response)
 
+@app.route('/decisions', methods=['GET'])
+def get_decisions():
+    response = linear_regression_decision()
+    return jsonify(response)
+
 @app.route('/getbindata', methods=['GET'])
 def get_getbindata():
     response = show_bindata()
@@ -264,24 +264,21 @@ def upload_profile_picture():
     else:
         return jsonify({'error': 'File type not allowed'}), 400
 
+
 @app.route('/charts/<path:filename>')
 def static_files(filename):
     return send_from_directory('static', filename)
 
 @app.route('/api/waste-data', methods=['GET'])
 def get_waste_data():
-    # Get the data from the database
     df = retrieve_bindata()
 
-    # Convert the 'timestamp' column to datetime if not already
     df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-    # Get query parameters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     bin_id = request.args.get('bin_id')
 
-    # Filter data based on query parameters
     if start_date and end_date:
         mask = (df['timestamp'] >= start_date) & (df['timestamp'] <= end_date)
         filtered_df = df[mask]
