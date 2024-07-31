@@ -16,7 +16,6 @@ def db_con():
 
         )
         if connection.is_connected():
-            print("connected!")
             return connection
 
     except Error as e:
@@ -77,6 +76,43 @@ def retrieve_bindata():
     finally:
         connection.close()
 
+def fetch_bindata_byid(bin_no, start_date, end_date):
+    connection = db_con()
+    if not connection:
+        return None
+
+    try:
+        cur = connection.cursor()
+        # query = "SELECT timestamp, bin_no FROM Bin_Data WHERE bin_no = %s"
+        query = """
+                   SELECT timestamp, bin_no
+                   FROM Bin_Data
+                   WHERE bin_no = %s
+                     AND timestamp >= %s
+                     AND timestamp <= %s
+               """
+
+        start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+        end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
+
+        cur.execute(query, (bin_no, start_date_str, end_date_str))
+        result = cur.fetchall()
+
+        df = pd.DataFrame(result, columns=['timestamp', 'bin_no'])
+        return df
+        # if result:
+        #     df = pd.DataFrame(result, columns=['timestamp', 'bin_no'])
+        #     return df
+        # else:
+        #     return pd.DataFrame()
+
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        return None
+    finally:
+        cur.close()
+        connection.close()
+
 
 def fetch_bin_name_mapping():
     connection = db_con()
@@ -106,7 +142,6 @@ def fetch_bin_name_mapping():
 def get_user(username):
     connection = db_con()
     if not connection:
-        print("Failed to connect to the database")
         return False
 
     try:
@@ -116,10 +151,8 @@ def get_user(username):
         userData = cur.fetchone()
 
         if userData:
-            print("User data retrieved:", userData)
             return userData
         else:
-            print("User does not exist")
             return False
 
     except Exception as e:
@@ -131,7 +164,6 @@ def get_user(username):
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-            print("mysql connection is closed in getUser")
 
 def insert_user(data):
     # connection = None
@@ -151,7 +183,6 @@ def insert_user(data):
             cur.fetchall()
 
             if user:
-                print("User already exists")
                 return {"message": "This email is already used!"}, 400
 
             else:
@@ -161,7 +192,6 @@ def insert_user(data):
                 cur.fetchall()
 
                 if user:
-                    print("username has already taken!")
                     return {"message": "username has already taken!"}, 400
                 else:
                     phone = data.get('phone')
@@ -173,7 +203,6 @@ def insert_user(data):
                     cur.execute(query, (email, phone, username, password_hash))
 
                     connection.commit()
-                    print("successfully inserted into Admin table")
                     return {"message": "User registered"}, 200
 
     except Exception as e:
@@ -185,7 +214,6 @@ def insert_user(data):
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-            print("mysql connection is closed in insertUser")
 
 def update_user(data, current_username):
     # connection = None
@@ -252,7 +280,6 @@ def update_password(data):
             cur.close()
         if connection and connection.is_connected():
             connection.close()
-            print("sql connection is closed in getUser")
 
 def save_profile_picture(username, file_url):
     connection = db_con()
@@ -285,5 +312,4 @@ def save_profile_picture(username, file_url):
     finally:
         if connection.is_connected():
             connection.close()
-            print("sql connection is closed")
 

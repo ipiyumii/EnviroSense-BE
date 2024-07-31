@@ -11,10 +11,7 @@ def update_predictions():
     bin_predictions = []
     data = retrieve_bindata()
     if data is not None and not data.empty:
-        print("Data retrieved:", data.head())
-
         os.makedirs('charts', exist_ok=True)
-
         bin_data_dict = fetch_and_split_data(data)
 
         unique_bins = data['bin_no'].unique()
@@ -22,7 +19,6 @@ def update_predictions():
         for bin_no, bin_df in bin_data_dict.items():
             predicted_fill_times = predict_fill_times(bin_df)
             time_only = format_times_for_frontend(predicted_fill_times)
-
             bin_predictions.append({
                 'bin_no': bin_no,
                 'predictions': time_only
@@ -36,18 +32,15 @@ def fetch_and_split_data(df):
     df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
     df.dropna(subset=['timestamp', 'bin_no'], inplace=True)
     df['timestamp'] = df['timestamp'].dt.tz_localize(None)
-
     df.set_index('timestamp', inplace=True)
 
     grouped_data = df.groupby('bin_no')
-
     bin_data_dict = {bin_no: group for bin_no, group in grouped_data}
 
     return bin_data_dict
 
 
 def format_times_for_frontend(predicted_times):
-    # Convert list of datetime objects to time-only strings
     return [time.strftime('%H:%M') for time in predicted_times]
 
 def round_to_nearest_10_minutes(dt):
@@ -57,7 +50,6 @@ def round_to_nearest_10_minutes(dt):
         rounded_minutes = 0
         dt = dt + timedelta(hours=1)
     return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
-
 
 def predict_fill_times(df,min_count=10):
     df.index = pd.to_datetime(df.index)
@@ -70,7 +62,6 @@ def predict_fill_times(df,min_count=10):
     df['hour_minute'] = df['hour'].astype(str).str.zfill(2) + ':' + df['minute'].astype(str).str.zfill(2)
 
     hour_minute_counts = df['hour_minute'].value_counts()
-
     frequent_hour_minute = hour_minute_counts[hour_minute_counts >= min_count].index.tolist()
 
     if not frequent_hour_minute:
@@ -86,7 +77,6 @@ def predict_fill_times(df,min_count=10):
     print(
         f"Predicted fill times for the next day for bin {df['bin_no'].iloc[0]}: {predicted_times}")
     return predicted_times
-
 
 def linear_regression_decision(threshold_multiplier=1):
     df = retrieve_bindata()
@@ -152,18 +142,14 @@ def create_gantt_chart(predicted_bin1_fill_times, predicted_bin2_fill_times):
     plt.savefig('charts/gantt_chart.png')
     plt.close()
 
-    print("Gantt chart created successfully")
-
 def create_calendar_heatmap(predicted_bin1_fill_times, predicted_bin2_fill_times):
     all_fill_times = predicted_bin1_fill_times + predicted_bin2_fill_times
     if not all_fill_times:
-        print("No fill times available for heatmap.")
         return
     df = pd.DataFrame({'Timestamp': all_fill_times})
     df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')  # Convert to datetime and handle errors
 
     if df['Timestamp'].isnull().all():
-        print("No valid datetime entries found.")
         return
 
     df['Date'] = df['Timestamp'].dt.date
@@ -207,5 +193,4 @@ def create_interactive_timeline_chart(predicted_bin1_fill_times, predicted_bin2_
 
     fig.write_html('charts/interactive_timeline_chart.html')
 
-    print("Interactive timeline chart created successfully")
 

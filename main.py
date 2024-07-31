@@ -4,7 +4,7 @@ from flask_cors import CORS
 import json
 from werkzeug.utils import secure_filename
 from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
-    retrieve_bindata
+    retrieve_bindata, fetch_bindata_byid
 from data_auth import authenticate_user
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -13,6 +13,7 @@ import os
 import logging
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from ml_scripts.script import show_bindata
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -45,7 +46,6 @@ def receive_data():
 def register():
     try:
         data = request.get_json()
-
         response, status_code = insert_user(data)
 
         if status_code == 200:
@@ -60,11 +60,10 @@ def register():
 
 
 # handle login
-@app.route('/', methods=['POST'])
+@app.route('/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
-
         response, status_code = authenticate_user(data)
 
         if status_code == 200:
@@ -78,12 +77,10 @@ def login():
         logger.error("Error in /login route: %s", e)
         return jsonify({"message": "Internal server error"}), 500
 
-
 # handle google login
 @app.route('/google-login', methods=['POST'])
 def handle_google_login():
     token = request.json.get('token')
-    print(f"Received token: {token}")
     logger.debug("Received token: %s", token)
 
     try:
@@ -117,7 +114,6 @@ def handle_google_login():
             access_token = create_access_token(identity=username)
             return jsonify(access_token=access_token, username=username), 200
             # return jsonify({"message": "Login successful and user registered", "name": name}), status_code
-
         else:
             return jsonify(response), status_code
 
@@ -140,10 +136,8 @@ def get_user_route():
     if username:
         user_data = get_user(username)
         logger.debug('You are authenticated!')
-        print('You are authenticated!')
 
         if user_data:
-            print(user_data)
             return jsonify(user_data), 200
         else:
             return jsonify({"error": "User not found"}), 404
@@ -166,13 +160,6 @@ def update_user_route():
         return jsonify({"error": "User not found"}), 404
 
     data = request.get_json()
-
-    # updated_data = {
-    #     'username': data.get('username', user_data['username']),
-    #     'email': data.get('email', user_data['email']),
-    #     'phone': data.get('phone', user_data['phone'])
-    # }
-
     response, status_code = update_user(data, current_username)
 
     if status_code == 200:
@@ -181,7 +168,7 @@ def update_user_route():
 
     return jsonify(response), status_code
 
-@app.route('/updatepwd', methods=['POST'])
+@app.route('/update-password', methods=['POST'])
 @jwt_required()
 def update_pwd():
     username = get_jwt_identity()
@@ -198,19 +185,8 @@ def update_pwd():
 
         else:
             response, status_code = update_password(data)
-            # return jsonify({"message": "New passwords do not match"}), 400
-
         if status_code == 200:
             return jsonify(response), status_code
-
-# def convert_to_serializable(data):
-#     if isinstance(data, list):
-#         return [convert_to_serializable(item) for item in data]
-#     elif isinstance(data, dict):
-#         return {key: convert_to_serializable(value) for key, value in data.items()}
-#     elif isinstance(data, (datetime, time)):
-#         return data.strftime('%Y-%m-%d %H:%M:%S') if isinstance(data, datetime) else data.strftime('%H:%M:%S')
-#     return data
 
 @app.route('/gettimes', methods=['GET'])
 def get_predictions():
@@ -222,10 +198,7 @@ def get_decisions():
     response = linear_regression_decision()
     return jsonify(response)
 
-@app.route('/getbindata', methods=['GET'])
-def get_getbindata():
-    response = show_bindata()
-    return jsonify(response)
+
 
 UPLOAD_FOLDER = 'uploads/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -269,6 +242,8 @@ def upload_profile_picture():
 def static_files(filename):
     return send_from_directory('static', filename)
 
+
+# okay
 @app.route('/api/waste-data', methods=['GET'])
 def get_waste_data():
     df = retrieve_bindata()
@@ -290,6 +265,37 @@ def get_waste_data():
 
     result = filtered_df.to_dict(orient='records')
     return jsonify(result)
+
+
+@app.route('/waste-data', methods=['GET'])
+def get_bin_data():
+    df = retrieve_bindata()
+
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df_list = df.to_dict(orient='records')
+    return jsonify(df_list)
+
+# @app.route('/getbindata', methods=['GET'])
+# def get_getbindata():
+#     response = show_bindata()
+#     return jsonify(response)
+
+@app.route('/historical-data', methods=['GET'])
+def get_bin_data_byid():
+    bin_no = request.args.get('bin_no')
+    if not bin_no:
+        return jsonify({"error": "Missing bin_no parameter"}), 400
+
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=28)
+
+    df = fetch_bindata_byid(bin_no, start_date, end_date)
+    if not df.empty:
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['time'] = df['timestamp'].dt.strftime('%H:%M:%S')
+    df_list = df.to_dict(orient='records')
+    return jsonify(df_list)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
