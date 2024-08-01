@@ -10,6 +10,8 @@ from google.auth.transport import requests
 from google.oauth2 import id_token
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 import os
+import random
+import time
 import logging
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from ml_scripts.script import show_bindata
@@ -295,6 +297,15 @@ def get_bin_data_byid():
         df['time'] = df['timestamp'].dt.strftime('%H:%M:%S')
     df_list = df.to_dict(orient='records')
     return jsonify(df_list)
+
+# Simulate real-time bin data
+@app.route('/realtime-data', methods=['GET'])
+def get_realtime_data():
+    mock_data = [
+        {"bin_no": "A4:CF:12:34:56:78", "level": random.randint(0, 100), "timestamp": time.time()},
+        {"bin_no": "B8:27:EB:98:76:54", "level": random.randint(0, 100), "timestamp": time.time()}
+    ]
+    return jsonify(mock_data)
 
 
 if __name__ == "__main__":
