@@ -1,39 +1,34 @@
-import pandas as pd
-from flask import Flask, request, jsonify, send_from_directory, redirect
+from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import json
+from datetime import datetime, timedelta
 from googleapiclient.errors import HttpError
 from werkzeug.utils import secure_filename
-from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
-    retrieve_bindata, fetch_bindata_byid, get_recipients
-from data_auth import authenticate_user
 from google.auth.transport import requests
-from google.oauth2 import id_token, service_account
-from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
-import random
-import time
-import logging
-import os
-import base64
+from google.oauth2 import id_token
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import pandas as pd
+import json
+import random
+import time
+import logging
+import os
+import base64
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
-from ml_scripts.script import show_bindata
-from datetime import datetime, timedelta
+from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
+    retrieve_bindata, fetch_bindata_byid, get_collectors, insert_collector
+from data_auth import authenticate_user
+
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
-
 app = Flask(__name__)
-
-
-
 
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
 
@@ -310,19 +305,11 @@ def get_bin_data_byid():
     df_list = df.to_dict(orient='records')
     return jsonify(df_list)
 
-
-
 # Simulate real-time bin data
-
-bin_levels = {
-    "A4:CF:12:34:56:78": 0,
-    "B8:27:EB:98:76:54": 0
-}
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 TOKEN_FILE = 'token.json'
 CREDENTIALS_FILE = 'credentials.json'
-
 
 def get_gmail_service():
     creds = None
@@ -346,26 +333,40 @@ def get_gmail_service():
 def create_message(sender, to, subject, body):
     message = MIMEMultipart()
     message['to'] = to
-    message['from'] = sender
+    # message['from'] = sender
+    message['from'] = f"EnviroSense AI <{sender}>"
     message['subject'] = subject
 
-    msg = MIMEText(body)
-    message.attach(msg)
+    message.attach(MIMEText(body, 'plain'))
 
-    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
     return {'raw': raw_message}
 
 
 def send_email(subject, body):
     try:
         service = get_gmail_service()
-        message = create_message('envirosenseai@gmail.com', 'envirosenseai@gmail.com', subject, body)
-        send_result = service.users().messages().send(userId='me', body=message).execute()
-        print('Message Id: %s' % send_result['id'])
+        collectors = get_collectors()
+        if 'error' in collectors:
+            print(collectors['error'])
+            return
+
+        for collector in collectors:
+            email_address = collector['email']
+            message = create_message('envirosenseai@gmail.com', email_address, subject, body)
+            send_result = service.users().messages().send(userId='me', body=message).execute()
+            print('Message Id: %s sent to %s' % (send_result['id'], collector))
+
     except HttpError as error:
         print(f'An error occurred: {error}')
         if hasattr(error, 'content'):
             print(f'Response content: {error.content.decode()}')
+
+
+bin_levels = {
+    "A4:CF:12:34:56:78": 0,
+    "B8:27:EB:98:76:54": 0
+}
 
 @app.route('/realtime-data', methods=['GET'])
 def get_realtime_data():
@@ -389,6 +390,29 @@ def get_realtime_data():
     ]
 
     return jsonify(mock_data)
+
+@app.route('/collector', methods=['GET'])
+def getCollectors():
+    collectors = get_collectors()
+
+    if isinstance(collectors, dict) and "error" in collectors:
+        return jsonify(collectors), 500
+
+    return jsonify(collectors)
+
+@app.route('/collector/register', methods=['POST', 'GET'])
+def register():
+    try:
+        data = request.get_json()
+        response, status_code = insert_collector(data)
+
+        if status_code == 200:
+            username = data.get('username')
+
+        return jsonify(response), status_code
+
+    except Exception as e:
+        return jsonify({"message": "Internal server error"}), 500
 
 
 if __name__ == "__main__":

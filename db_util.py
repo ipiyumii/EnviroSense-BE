@@ -313,15 +313,15 @@ def save_profile_picture(username, file_url):
         if connection.is_connected():
             connection.close()
 
-def get_recipients():
+def get_collectors():
     connection = db_con()
     if not connection:
         return {"error": "Database connection failed"}, 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
-            query = "SELECT name, email FROM collectors"
-            cur.execute(query,)
+            query = "SELECT name,phone_number, email FROM collectors"
+            cur.execute(query)
             recipients = cur.fetchall()
             connection.commit()
             return recipients
@@ -333,6 +333,34 @@ def get_recipients():
     finally:
         if connection.is_connected():
             connection.close()
+
+def insert_collector(data):
+    connection = db_con()
+    if not connection:
+        return {"error": "Database connection failed"}, 500
+
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            email = data.get('email')
+            name = data.get('username')
+            phone_number = data.gq('phone_number')
+
+            query = "INSERT INTO `collectors`(`name`, `phone_number`, `email`) VALUES(%s,%s,%s)"
+            cur.execute(query, (name,phone_number,email))
+
+        connection.commit()
+        return {"message": "User registered"}, 200
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"message": "error occurred while inserting user"}, 500
+
+    finally:
+        if cur:
+            cur.close()
+        if connection and connection.is_connected():
+            connection.close()
+
 
 
 
