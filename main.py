@@ -1,18 +1,26 @@
 import pandas as pd
-from flask import Flask, request, jsonify,send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, redirect
 from flask_cors import CORS
 import json
+from googleapiclient.errors import HttpError
 from werkzeug.utils import secure_filename
 from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
-    retrieve_bindata, fetch_bindata_byid
+    retrieve_bindata, fetch_bindata_byid, get_recipients
 from data_auth import authenticate_user
 from google.auth.transport import requests
-from google.oauth2 import id_token
+from google.oauth2 import id_token, service_account
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
-import os
 import random
 import time
 import logging
+import os
+import base64
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from ml_scripts.script import show_bindata
 from datetime import datetime, timedelta
@@ -23,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 app = Flask(__name__)
+
+
+
+
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
 
 app.config['JWT_SECRET_KEY'] = os.urandom(24)
@@ -298,18 +310,92 @@ def get_bin_data_byid():
     df_list = df.to_dict(orient='records')
     return jsonify(df_list)
 
+
+
 # Simulate real-time bin data
+
+bin_levels = {
+    "A4:CF:12:34:56:78": 0,
+    "B8:27:EB:98:76:54": 0
+}
+
+SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+TOKEN_FILE = 'token.json'
+CREDENTIALS_FILE = 'credentials.json'
+
+
+def get_gmail_service():
+    creds = None
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+
+        with open(TOKEN_FILE, 'w') as token:
+            token.write(creds.to_json())
+
+    return build('gmail', 'v1', credentials=creds)
+
+
+
+def create_message(sender, to, subject, body):
+    message = MIMEMultipart()
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+
+    msg = MIMEText(body)
+    message.attach(msg)
+
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    return {'raw': raw_message}
+
+
+def send_email(subject, body):
+    try:
+        service = get_gmail_service()
+        message = create_message('envirosenseai@gmail.com', 'envirosenseai@gmail.com', subject, body)
+        send_result = service.users().messages().send(userId='me', body=message).execute()
+        print('Message Id: %s' % send_result['id'])
+    except HttpError as error:
+        print(f'An error occurred: {error}')
+        if hasattr(error, 'content'):
+            print(f'Response content: {error.content.decode()}')
+
 @app.route('/realtime-data', methods=['GET'])
 def get_realtime_data():
+    global bin_levels
+
+    for bin_no in bin_levels:
+        if bin_levels[bin_no] == 100:
+            send_email(
+                subject="Bin Full Notification - Immediate Collection Required",
+                body=f"Dear Trash Collection Team,\n\nThis is to inform you that Bin {bin_no} is now full and requires immediate collection.\n\nThank you for your prompt attention to this matter.\n\nBest regards,\nSupervisor"
+            )
+            bin_levels[bin_no] = random.randint(0, 10)  # Reset to a lower value
+        else:
+            bin_levels[bin_no] = min(bin_levels[bin_no] + random.randint(0, 10), 100)
+
+    print(f"Checking bin {bin_no} with level {bin_levels[bin_no]}")
+
     mock_data = [
-        {"bin_no": "A4:CF:12:34:56:78", "level": random.randint(0, 100), "timestamp": time.time()},
-        {"bin_no": "B8:27:EB:98:76:54", "level": random.randint(0, 100), "timestamp": time.time()}
+        {"bin_no": bin_no, "level": level, "timestamp": time.time()}
+        for bin_no, level in bin_levels.items()
     ]
+
     return jsonify(mock_data)
 
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+    # aneballo123@
+    #  test.autho.124@gmail.com
 
 
 

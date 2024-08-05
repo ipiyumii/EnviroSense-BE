@@ -313,3 +313,27 @@ def save_profile_picture(username, file_url):
         if connection.is_connected():
             connection.close()
 
+def get_recipients():
+    connection = db_con()
+    if not connection:
+        return {"error": "Database connection failed"}, 500
+
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            query = "SELECT name, email FROM collectors"
+            cur.execute(query,)
+            recipients = cur.fetchall()
+            connection.commit()
+            return recipients
+
+    except Error as e:
+        print(f"Error: {e}")
+        return {"error": "error occurred while updating the user"}, 500
+
+    finally:
+        if connection.is_connected():
+            connection.close()
+
+
+
+
