@@ -22,7 +22,7 @@ import base64
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
     retrieve_bindata, fetch_bindata_byid, get_collectors, insert_collector, deleteCollector, find_collector_by_email, \
-    updateCollector
+    updateCollector, getBinMetadata
 from data_auth import authenticate_user
 
 
@@ -440,6 +440,12 @@ def update_collector():
     else:
         return jsonify({"error": "Invalid data"}), 400
 
+@app.route('/meta/bin', methods=['GET'])
+def get_bin_meta():
+    binMeta, status_code = getBinMetadata()
+    if not isinstance(binMeta, list):
+        binMeta = []
+    return jsonify(binMeta), status_code
 
 if __name__ == "__main__":
     app.run(debug=True)

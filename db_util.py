@@ -76,6 +76,8 @@ def retrieve_bindata():
     finally:
         connection.close()
 
+
+
 def fetch_bindata_byid(bin_no, start_date, end_date):
     connection = db_con()
     if not connection:
@@ -426,4 +428,24 @@ def find_collector_by_email(email):
 
     finally:
         if connection and connection.is_connected():
+            connection.close()
+
+def getBinMetadata():
+    connection = db_con()
+    if not connection:
+        return [], 500
+
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            query = "SELECT `bin_no`, `bin_name`, `location` FROM `bins`"
+            cur.execute(query)
+            bin_meta = cur.fetchall()
+            return bin_meta, 200
+
+    except Error as e:
+        print(f"Error: {e}")
+        return [], 500
+
+    finally:
+        if connection.is_connected():
             connection.close()
