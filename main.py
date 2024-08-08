@@ -21,7 +21,8 @@ import os
 import base64
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
-    retrieve_bindata, fetch_bindata_byid, get_collectors, insert_collector
+    retrieve_bindata, fetch_bindata_byid, get_collectors, insert_collector, deleteCollector, find_collector_by_email, \
+    updateCollector
 from data_auth import authenticate_user
 
 
@@ -401,18 +402,43 @@ def getCollectors():
     return jsonify(collectors)
 
 @app.route('/collector/register', methods=['POST', 'GET'])
-def register():
+def register_collector():
     try:
         data = request.get_json()
         response, status_code = insert_collector(data)
-
-        if status_code == 200:
-            username = data.get('username')
-
         return jsonify(response), status_code
 
     except Exception as e:
         return jsonify({"message": "Internal server error"}), 500
+
+@app.route('/collector/delete', methods=['DELETE'])
+def delete_collector():
+    collector_mail = request.args.get('email')
+    if(collector_mail):
+        result = deleteCollector(collector_mail)
+        if result:
+            return jsonify({"message": "Collector deleted successfully"}), 200
+        else:
+            return jsonify({"message": "Collector not found"}), 404
+        return jsonify({"message": "Invalid request"}), 400
+
+@app.route('/collector/update', methods=['PUT'])
+def update_collector():
+    previous_email = request.args.get('original_email')
+    data = request.json
+
+    if previous_email:
+        collector = find_collector_by_email(previous_email)
+        if collector:
+            collector['name'] = data['name']
+            collector['email'] = data['email']
+            collector['phone_number'] = data['phone_number']
+            updateCollector(previous_email, collector)
+            return jsonify({"message": "Collector updated successfully"}), 200
+        else:
+            return jsonify({"error": "Collector not found"}), 404
+    else:
+        return jsonify({"error": "Invalid data"}), 400
 
 
 if __name__ == "__main__":
