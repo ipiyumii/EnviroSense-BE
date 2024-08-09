@@ -22,7 +22,7 @@ import base64
 from ml_scripts.predictions import update_predictions,  linear_regression_decision
 from db_util import insert_bindata, insert_user, get_user, update_user, update_password, save_profile_picture, \
     retrieve_bindata, fetch_bindata_byid, get_collectors, insert_collector, deleteCollector, find_collector_by_email, \
-    updateCollector, getBinMetadata
+    updateCollector, getBinMetadata, find_bin_byid, update_bin_metadata
 from data_auth import authenticate_user
 
 
@@ -446,6 +446,28 @@ def get_bin_meta():
     if not isinstance(binMeta, list):
         binMeta = []
     return jsonify(binMeta), status_code
+
+@app.route('/meta/bin/update', methods=['PUT'])
+def update_bin_meta():
+    bin_no = request.args.get('bin_no')
+    data = request.json
+
+    if bin_no:
+        bin_meta = find_bin_byid(bin_no)
+
+        if bin_meta:
+            bin_meta['bin_name'] = data['bin_name']
+            bin_meta['location'] = data['location']
+
+            update_bin_metadata(bin_no, bin_meta)
+            return jsonify({"message": "Collector updated successfully"}), 200
+
+        else:
+            return jsonify({"error": "Collector not found"}), 404
+
+    else:
+        return jsonify({"error": "Invalid data"}), 400
+
 
 if __name__ == "__main__":
     app.run(debug=True)

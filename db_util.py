@@ -449,3 +449,49 @@ def getBinMetadata():
     finally:
         if connection.is_connected():
             connection.close()
+
+def find_bin_byid(bin_no):
+    connection = db_con()
+    if not connection:
+        return [], 500
+
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            query = 'SELECT * FROM `bins` WHERE `bin_no` = %s'
+            cur.execute(query, (bin_no,))
+
+            result = cur.fetchone()
+            return result
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
+def update_bin_metadata(bin_no, bin_meta):
+    connection = db_con()
+    if not connection:
+        return [], 500
+
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            query = 'UPDATE `bins` SET `bin_name`= %s,`location`=%s WHERE bin_no = %s'
+            cur.execute(query, (bin_meta['bin_name'], bin_meta['location'], bin_no))
+
+            connection.commit()
+            return {"message": "User registered"}, 200
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"message": "error occurred while inserting user"}, 500
+
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+
+
