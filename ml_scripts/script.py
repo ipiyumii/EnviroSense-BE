@@ -7,12 +7,9 @@ def show_bindata():
     data = retrieve_bindata()
     if data is not None and not data.empty:
         print("Columns available before preparation:", data.columns)
-        print("Data retrieved:", data.head())
 
         os.makedirs('charts', exist_ok=True)
-
         create_weekly_donut_charts(data)
-
         return "success data process"
 
 def create_weekly_donut_charts(data):
@@ -32,7 +29,6 @@ def create_weekly_donut_charts(data):
         plt.title(f'Bin {bin_no} Weekly Fill Frequency Donut Chart')
         plt.savefig(f'charts/bin_{bin_no}_weekly_donut_chart.png')
         plt.close()
-    print("Donut charts for each bin created successfully")
 
 
 

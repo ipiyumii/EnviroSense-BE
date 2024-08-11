@@ -1,9 +1,6 @@
 import os
-from datetime import timedelta, datetime
-import matplotlib.dates as mdates
+from datetime import timedelta
 import pandas as pd
-from matplotlib import pyplot as plt, patches
-import plotly.express as px
 from db_util import retrieve_bindata
 
 
@@ -74,14 +71,10 @@ def predict_fill_times(df,min_count=10):
         hour, minute = map(int, hour_min.split(':'))
         next_day_time = last_date + timedelta(days=1) + timedelta(hours=hour, minutes=minute)
         predicted_times.append(next_day_time)
-    print(
-        f"Predicted fill times for the next day for bin {df['bin_no'].iloc[0]}: {predicted_times}")
     return predicted_times
 
 def linear_regression_decision(threshold_multiplier=1):
     df = retrieve_bindata()
-    if df is not None and not df.empty:
-        print("Data retrieved:", df.head())
 
     df['date'] = df['timestamp'].dt.date
     emptying_counts_per_day = df.groupby(['bin_no', 'date']).size().reset_index(name='emptying_count')
@@ -104,93 +97,4 @@ def linear_regression_decision(threshold_multiplier=1):
             }
     if bins_to_change:
         return response
-
-def create_gantt_chart(predicted_bin1_fill_times, predicted_bin2_fill_times):
-    def to_datetime(times):
-        if isinstance(times[0], str):
-            return [datetime.strptime(time, '%Y-%m-%d %H:%M:%S') for time in times]
-        return times
-
-    predicted_bin1_fill_times = to_datetime(predicted_bin1_fill_times)
-    predicted_bin2_fill_times = to_datetime(predicted_bin2_fill_times)
-
-    df = pd.DataFrame({
-        'Task': ['Bin 1'] * len(predicted_bin1_fill_times) + ['Bin 2'] * len(predicted_bin2_fill_times),
-        'Start': predicted_bin1_fill_times + predicted_bin2_fill_times,
-        'End': [time + timedelta(minutes=15) for time in predicted_bin1_fill_times] +
-               [time + timedelta(minutes=15) for time in predicted_bin2_fill_times]
-    })
-
-    df['Start'] = pd.to_datetime(df['Start'])
-    df['End'] = pd.to_datetime(df['End'])
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    for i, task in enumerate(df['Task'].unique()):
-        task_df = df[df['Task'] == task]
-        ax.broken_barh(
-            [(start, end - start) for start, end in zip(task_df['Start'], task_df['End'])],
-            (i - 0.4, 0.8),
-            facecolors=('tab:blue' if task == 'Bin 1' else 'tab:orange')
-        )
-    ax.set_yticks(range(len(df['Task'].unique())))
-    ax.set_yticklabels(df['Task'].unique())
-    ax.set_xlabel('Time')
-    ax.set_title('Predicted Fill Times for Bins')
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
-    plt.xticks(rotation=45)
-    plt.savefig('charts/gantt_chart.png')
-    plt.close()
-
-def create_calendar_heatmap(predicted_bin1_fill_times, predicted_bin2_fill_times):
-    all_fill_times = predicted_bin1_fill_times + predicted_bin2_fill_times
-    if not all_fill_times:
-        return
-    df = pd.DataFrame({'Timestamp': all_fill_times})
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')  # Convert to datetime and handle errors
-
-    if df['Timestamp'].isnull().all():
-        return
-
-    df['Date'] = df['Timestamp'].dt.date
-    df['Hour'] = df['Timestamp'].dt.hour
-
-    fill_counts = df.groupby(['Date', 'Hour']).size().unstack(fill_value=0)
-    fig, ax = plt.subplots(figsize=(14, 10))
-
-    for i, (date, counts) in enumerate(fill_counts.iterrows()):
-        for hour, count in counts.items():
-            if count > 0:
-                ax.add_patch(patches.Rectangle(
-                    (hour, i), 1, 1,
-                    color='blue', alpha=min(count/len(all_fill_times), 1.0)
-                ))
-
-    ax.set_xlabel('Hour of Day')
-    ax.set_ylabel('Date')
-    ax.set_title('Calendar Heatmap of Predicted Fill Times')
-    ax.set_xticks(range(24))
-    ax.set_xticklabels([f'{hour}:00' for hour in range(24)])
-    ax.set_yticks(range(len(fill_counts)))
-    ax.set_yticklabels([date.strftime('%Y-%m-%d') for date in fill_counts.index])
-    plt.xticks(rotation=45)
-    plt.savefig('charts/calendar_heatmap.png')
-    plt.close()
-
-def create_interactive_timeline_chart(predicted_bin1_fill_times, predicted_bin2_fill_times):
-    events = pd.DataFrame({
-        'Timestamp': predicted_bin1_fill_times + predicted_bin2_fill_times,
-        'Bin': ['Bin 1'] * len(predicted_bin1_fill_times) + ['Bin 2'] * len(predicted_bin2_fill_times)
-    })
-
-    fig = px.scatter(events, x='Timestamp', y=[0] * len(events), color='Bin',
-                     labels={'Timestamp': 'Time', 'y': ''},
-                     title='Predicted Fill Times Timeline')
-
-    fig.update_layout(yaxis_visible=False, yaxis_showgrid=False)
-    fig.update_traces(marker=dict(size=10, line=dict(width=2, color='DarkSlateGrey')),
-                      selector=dict(mode='markers+text'))
-
-    fig.write_html('charts/interactive_timeline_chart.html')
-
 

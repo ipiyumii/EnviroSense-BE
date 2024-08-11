@@ -3,7 +3,6 @@ import pandas as pd
 from werkzeug.security import generate_password_hash
 from mysql.connector import Error
 from sqlalchemy import create_engine
-from datetime import datetime, timedelta
 
 def db_con():
     try:
@@ -13,7 +12,6 @@ def db_con():
             host='localhost',
             port=3306,
             database='EnviroSenseAI_db'
-
         )
         if connection.is_connected():
             return connection
@@ -25,7 +23,7 @@ def db_con():
 def insert_bindata(data):
     connection = db_con()
     if not connection:
-        return False
+        return [], 500
 
     try:
         cur = connection.cursor()
@@ -39,13 +37,11 @@ def insert_bindata(data):
                 cur.execute(query, (bin_id, timestamp, bin_name))
 
         connection.commit()
-
         return True
 
     except Exception as e:
         print(f"Error occurred: {e}")
         return False
-
     finally:
         if cur:
             cur.close()
@@ -55,33 +51,25 @@ def insert_bindata(data):
 def retrieve_bindata():
     connection = db_con()
     if not connection:
-        return None
-
+        return [], 500
     try:
         engine = create_engine('mysql+mysqlconnector://root:root@localhost:3306/EnviroSenseAI_db')
 
         query = "SELECT timestamp, bin_no FROM Bin_Data;"
 
-        # query = f"""
-        # SELECT * FROM Bin_Data
-        # WHERE timestamp >= '{date_15_days_ago_str}'
-        # """
-
         df = pd.read_sql(query, engine)
         return df
+
     except Exception as e:
         print(f"Error occurred: {e}")
         return None
-
     finally:
         connection.close()
-
-
 
 def fetch_bindata_byid(bin_no, start_date, end_date):
     connection = db_con()
     if not connection:
-        return None
+        return [], 500
 
     try:
         cur = connection.cursor()
@@ -102,11 +90,6 @@ def fetch_bindata_byid(bin_no, start_date, end_date):
 
         df = pd.DataFrame(result, columns=['timestamp', 'bin_no'])
         return df
-        # if result:
-        #     df = pd.DataFrame(result, columns=['timestamp', 'bin_no'])
-        #     return df
-        # else:
-        #     return pd.DataFrame()
 
     except Exception as e:
         print(f"Error occurred: {e}")
@@ -115,11 +98,10 @@ def fetch_bindata_byid(bin_no, start_date, end_date):
         cur.close()
         connection.close()
 
-
 def fetch_bin_name_mapping():
     connection = db_con()
     if not connection:
-        return None
+        return [], 500
 
     try:
         query = "SELECT bin_no, bin_name FROM bins"
@@ -137,14 +119,13 @@ def fetch_bin_name_mapping():
     except Exception as e:
         print(f"Error occurred: {e}")
         return None
-
     finally:
         connection.close()
 
 def get_user(username):
     connection = db_con()
     if not connection:
-        return False
+        return [], 500
 
     try:
         cur = connection.cursor(dictionary=True)
@@ -160,7 +141,6 @@ def get_user(username):
     except Exception as e:
         print(f"Error: {e}")
         return False
-
     finally:
         if cur:
             cur.close()
@@ -168,11 +148,9 @@ def get_user(username):
             connection.close()
 
 def insert_user(data):
-    # connection = None
-    # cur = None
     connection = db_con()
     if not connection:
-        return {"message": "db connection failed"}, 500
+        return [], 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
@@ -218,10 +196,9 @@ def insert_user(data):
             connection.close()
 
 def update_user(data, current_username):
-    # connection = None
     connection = db_con()
     if not connection:
-        return {"error": "db connection failed"}, 500
+        return [], 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
@@ -252,12 +229,11 @@ def update_user(data, current_username):
     finally:
         if connection.is_connected():
             connection.close()
-            print("mysql connection is closed")
 
 def update_password(data):
     connection = db_con()
     if not connection:
-        return {"error": "db connection failed"}, 500
+        return [], 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
@@ -286,7 +262,7 @@ def update_password(data):
 def save_profile_picture(username, file_url):
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
+        return [], 500
 
     try:
         with connection.cursor(dictionary=True) as cur:
@@ -318,8 +294,7 @@ def save_profile_picture(username, file_url):
 def get_collectors():
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
-
+        return [], 500
     try:
         with connection.cursor(dictionary=True) as cur:
             query = "SELECT name,phone_number, email FROM collectors"
@@ -331,7 +306,6 @@ def get_collectors():
     except Error as e:
         print(f"Error: {e}")
         return {"error": "error occurred while updating the user"}, 500
-
     finally:
         if connection.is_connected():
             connection.close()
@@ -339,8 +313,7 @@ def get_collectors():
 def insert_collector(data):
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
-
+        return [], 500
     try:
         with connection.cursor(dictionary=True) as cur:
             email = data.get('email')
@@ -367,8 +340,7 @@ def insert_collector(data):
 def deleteCollector(email):
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
-
+        return [], 500
     try:
         with connection.cursor(dictionary=True) as cur:
             query = 'DELETE FROM `collectors` WHERE email = %s'
@@ -380,7 +352,6 @@ def deleteCollector(email):
     except Exception as e:
         print(f"Error: {e}")
         return {"message": "error occurred while inserting user"}, 500
-
     finally:
         if cur:
             cur.close()
@@ -391,8 +362,7 @@ def deleteCollector(email):
 def updateCollector(original_email, data):
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
-
+        return [], 500
     try:
         with connection.cursor(dictionary=True) as cur:
             query = 'UPDATE collectors SET name = %s, phone_number = %s, email = %s WHERE email = %s'
@@ -404,7 +374,6 @@ def updateCollector(original_email, data):
     except Exception as e:
         print(f"Error: {e}")
         return {"message": "error occurred while inserting user"}, 500
-
     finally:
         if connection and connection.is_connected():
             connection.close()
@@ -412,8 +381,7 @@ def updateCollector(original_email, data):
 def find_collector_by_email(email):
     connection = db_con()
     if not connection:
-        return {"error": "Database connection failed"}, 500
-
+        return [], 500
     try:
         with connection.cursor(dictionary=True) as cur:
             query = 'SELECT `name`, `phone_number`, `email` FROM collectors WHERE email = %s'
@@ -425,7 +393,6 @@ def find_collector_by_email(email):
     except Exception as e:
         print(f"Error: {e}")
         return None
-
     finally:
         if connection and connection.is_connected():
             connection.close()
@@ -434,7 +401,6 @@ def getBinMetadata():
     connection = db_con()
     if not connection:
         return [], 500
-
     try:
         with connection.cursor(dictionary=True) as cur:
             query = "SELECT `bin_no`, `bin_name`, `location` FROM `bins`"
@@ -445,7 +411,6 @@ def getBinMetadata():
     except Error as e:
         print(f"Error: {e}")
         return [], 500
-
     finally:
         if connection.is_connected():
             connection.close()
@@ -454,7 +419,6 @@ def find_bin_byid(bin_no):
     connection = db_con()
     if not connection:
         return [], 500
-
     try:
         with connection.cursor(dictionary=True) as cur:
             query = 'SELECT * FROM `bins` WHERE `bin_no` = %s'
@@ -466,11 +430,9 @@ def find_bin_byid(bin_no):
     except Exception as e:
         print(f"Error: {e}")
         return None
-
     finally:
         if connection and connection.is_connected():
             connection.close()
-
 
 def update_bin_metadata(bin_no, bin_meta):
     connection = db_con()
@@ -488,10 +450,53 @@ def update_bin_metadata(bin_no, bin_meta):
     except Exception as e:
         print(f"Error: {e}")
         return {"message": "error occurred while inserting user"}, 500
-
     finally:
         if connection and connection.is_connected():
             connection.close()
 
 
+def delete_bin_metadata(bin_no):
+    connection = db_con()
+    if not connection:
+        return [], 500
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            query = 'DELETE FROM `bins` WHERE bin_no = %s'
+            cur.execute(query, bin_no)
 
+        connection.commit()
+        return {"message": "User registered"}, 200
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"message": "error occurred while inserting user"}, 500
+    finally:
+        if cur:
+            cur.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def insert_bin_metadata(data):
+    connection = db_con()
+    if not connection:
+        return [], 500
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            bin_no = data.get('bin_no')
+            bin_name = data.get('bin_name')
+            location = data.get('location')
+
+            query = "INSERT INTO `bins`(`bin_no`, `bin_name`, `location`) VALUES (%s,%s,%s)"
+            cur.execute(query, (bin_no, bin_name, location))
+
+        connection.commit()
+        return {"message": "User registered"}, 200
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"message": "error occurred while inserting user"}, 500
+    finally:
+        if cur:
+            cur.close()
+        if connection and connection.is_connected():
+            connection.close()
