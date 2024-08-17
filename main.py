@@ -21,12 +21,12 @@ import time
 import logging
 import os
 import base64
-from ml_scripts.predictions import update_predictions,  linear_regression_decision
+from ml_scripts.predictions import update_predictions, linear_regression_decision
 from db_util import insert_user, get_user, update_user, update_password, save_profile_picture, \
     retrieve_bindata, fetch_bindata_byid, get_collectors, insert_collector, deleteCollector, find_collector_by_email, \
-    updateCollector, getBinMetadata, find_bin_byid, update_bin_metadata, delete_bin_metadata, insert_bin_metadata
+    updateCollector, getBinMetadata, find_bin_byid, update_bin_metadata, delete_bin_metadata, insert_bin_metadata, \
+    get_user_by_email, insert_binfill_time
 from data_auth import authenticate_user
-
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -38,34 +38,36 @@ CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://local
 app.config['JWT_SECRET_KEY'] = os.urandom(24)
 jwt = JWTManager(app)
 
-cred = credentials.Certificate("firebase_credentials.json")
+cred = credentials.Certificate("firebase-credentials.json")
 firebase_admin.initialize_app(cred, {
     "databaseURL": "https://envirosense-5ef53-default-rtdb.asia-southeast1.firebasedatabase.app/"
 })
 
-def simulate_data():
-    bins = ['B8:27:EB:98:76:54', 'A4:CF:12:34:56:78']
 
-    bin_levels = {bin_no: 0 for bin_no in bins}
+def simulate_data():
+    bins = ['B8:27:EB:98:76:54', 'CC:7B:5C:34:9F:1C']
+
+    # bin_levels = {bin_no: 0 for bin_no in bins}
+    # bin_levels = {bin_no: 15 for bin_no in bins}
 
     while True:
         for bin_no in bins:
-            bin_levels[bin_no] += random.randint(1, 10)  # Increment by a random value between 1 and 10
+            # bin_levels[bin_no] += random.randint(1, 10)
+            bin_level_cm = random.randint(1, 15)
+            bin_levels[bin_no] = bin_level_cm
+            if bin_levels[bin_no] > 15:
+                bin_levels[bin_no] = 15
 
-            # Reset to 0 if it exceeds 100
-            if bin_levels[bin_no] > 100:
-                bin_levels[bin_no] = 0
-
-            # Update Firebase
             ref = db.reference(f'{bin_no}')
             ref.set({
                 'Bin_Level': bin_levels[bin_no],
                 'Timestamp': time.time()
             })
 
-            print(f"Added data: Bin = {bin_no}, Fill Level = {bin_levels[bin_no]}")
+            print(f"bin level: Bin = {bin_no}, Fill Level = {bin_levels[bin_no]}")
 
-        time.sleep(300)
+        time.sleep(30)
+
 
 # handle registration
 @app.route('/register', methods=['POST', 'GET'])
@@ -82,6 +84,7 @@ def register():
 
     except Exception as e:
         return jsonify({"message": "Internal server error"}), 500
+
 
 # handle login
 @app.route('/login', methods=['POST'])
@@ -100,6 +103,7 @@ def login():
         logger.error("Error in /login route: %s", e)
         return jsonify({"message": "Internal server error"}), 500
 
+
 # handle google login
 @app.route('/google-login', methods=['POST'])
 def handle_google_login():
@@ -113,36 +117,46 @@ def handle_google_login():
 
         email = idinfo.get('email')
         name = idinfo.get('name')
+        picture = idinfo.get('picture')
 
         user_data = {
             'email': email,
-            'username': name,
+            'username': email,
             'password': None,
-            'phone': ''
+            'phone': '',
+            'file_path': picture
         }
         # Check if user already exists
-        existing_user = get_user(name)
+        existing_user = get_user(email)
         if existing_user:
-            username = name
-            access_token = create_access_token(identity=username)
-            return jsonify(access_token=access_token, username=username), 200
+            if existing_user.get('profile_picture') != picture:
+                save_profile_picture(email, picture)
+            username = email
+            access_token = create_access_token(identity=email)
+            return jsonify(access_token=access_token, username=email), 200
 
         response, status_code = insert_user(user_data)
+        save_profile_picture(email, picture)
         if status_code == 200:
-            username = name
-            access_token = create_access_token(identity=username)
-            return jsonify(access_token=access_token, username=username), 200
+            access_token = create_access_token(identity=email)
+            return jsonify(access_token=access_token, username=email), 200
         else:
             return jsonify(response), status_code
 
-    except ValueError:
-        logger.debug("Invalid token")
-        print("Invalid token")
+    except ValueError as e:
+        logger.error("Token verification failed: %s", str(e))
         return jsonify({"message": "Invalid token"}), 401
+
 
 @app.route('/logout', methods=['POST'])
 def logout():
-    return jsonify({"message": "Logged out successfully"}), 200
+    response = jsonify({"message": "Logged out successfully"})
+    response.set_cookie('access_token', '', expires=0)  # Clear the cookie
+    return response, 200
+
+
+
+
 
 # get user (editProfile)
 @app.route('/user', methods=['GET'])
@@ -152,7 +166,7 @@ def get_user_route():
 
     if username:
         user_data = get_user(username)
-        logger.debug('You are authenticated!')
+        logger.debug('User data retrieved: %s', user_data)
 
         if user_data:
             return jsonify(user_data), 200
@@ -160,6 +174,7 @@ def get_user_route():
             return jsonify({"error": "User not found"}), 404
     else:
         return jsonify({"error": "Not logged in"}), 401
+
 
 # Update user
 @app.route('/updateuser', methods=['POST'])
@@ -183,6 +198,7 @@ def update_user_route():
         return jsonify(response), status_code, {'Authorization': f'Bearer {new_token}'}
     return jsonify(response), status_code
 
+
 @app.route('/update-password', methods=['POST'])
 @jwt_required()
 def update_pwd():
@@ -202,26 +218,32 @@ def update_pwd():
         if status_code == 200:
             return jsonify(response), status_code
 
+
 @app.route('/gettimes', methods=['GET'])
 def get_predictions():
     response = update_predictions()
     return jsonify(response)
+
 
 @app.route('/decisions', methods=['GET'])
 def get_decisions():
     response = linear_regression_decision()
     return jsonify(response)
 
+
 UPLOAD_FOLDER = 'uploads/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 @app.route('/uploadprofilepicture', methods=['POST'])
 @jwt_required()
@@ -248,9 +270,11 @@ def upload_profile_picture():
     else:
         return jsonify({'error': 'File type not allowed'}), 400
 
+
 @app.route('/charts/<path:filename>')
 def static_files(filename):
     return send_from_directory('static', filename)
+
 
 # okay
 @app.route('/api/waste-data', methods=['GET'])
@@ -273,6 +297,7 @@ def get_waste_data():
     result = filtered_df.to_dict(orient='records')
     return jsonify(result)
 
+
 @app.route('/waste-data', methods=['GET'])
 def get_bin_data():
     df = retrieve_bindata()
@@ -280,6 +305,7 @@ def get_bin_data():
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df_list = df.to_dict(orient='records')
     return jsonify(df_list)
+
 
 @app.route('/historical-data', methods=['GET'])
 def get_bin_data_byid():
@@ -297,9 +323,11 @@ def get_bin_data_byid():
     df_list = df.to_dict(orient='records')
     return jsonify(df_list)
 
+
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 TOKEN_FILE = 'token.json'
 CREDENTIALS_FILE = 'credentials.json'
+
 
 def get_gmail_service():
     creds = None
@@ -318,6 +346,7 @@ def get_gmail_service():
 
     return build('gmail', 'v1', credentials=creds)
 
+
 def create_message(sender, to, subject, body):
     message = MIMEMultipart()
     message['to'] = to
@@ -329,6 +358,7 @@ def create_message(sender, to, subject, body):
 
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
     return {'raw': raw_message}
+
 
 def send_email(subject, body):
     try:
@@ -347,70 +377,85 @@ def send_email(subject, body):
         if hasattr(error, 'content'):
             print(f'Response content: {error.content.decode()}')
 
+
 bin_levels = {
     "A4:CF:12:34:56:78": 0,
     "B8:27:EB:98:76:54": 0
 }
-# @app.route('/realtime-data', methods=['GET'])
-# def get_realtime_data():
-#     global bin_levels
-#
-#     for bin_no in bin_levels:
-#         if bin_levels[bin_no] == 100:
-#             send_email(
-#                 subject="Bin Full Notification - Immediate Collection Required",
-#                 body=f"Dear Trash Collection Team,\n\nThis is to inform you that Bin {bin_no} is now full and requires immediate collection.\n\nThank you for your prompt attention to this matter.\n\nBest regards,\nSupervisor"
-#             )
-#             bin_levels[bin_no] = random.randint(0, 10)  # Reset to a lower value
-#         else:
-#             bin_levels[bin_no] = min(bin_levels[bin_no] + random.randint(0, 10), 100)
-#
-#     mock_data = [
-#         {"bin_no": bin_no, "level": level, "timestamp": time.time()}
-#         for bin_no, level in bin_levels.items()
-#     ]
-#     return jsonify(mock_data)
 
 @app.route('/realtime-data', methods=['GET'])
 def get_realtime_data():
     try:
-        # ref = db.reference('dustbin_data')
         ref = db.reference()
 
-        # Fetch data from Firebase
         data = ref.get()
-
+        print("Data from DB:", data)
+        result = []
         if data:
             for bin_no, record in data.items():
                 fill_level = record.get('Bin_Level')
+                print(f"Processing bin_no: {bin_no}, fill_level: {fill_level}")
+                bin_level_percent = int((fill_level / 15) * 100)
 
-                if fill_level >= 95:
+                result.append({
+                    "bin_no": bin_no,
+                    "Bin_Level": bin_level_percent,
+                    "Timestamp": time.time()
+                })
+
+                if fill_level >= 14:
                     # Send email notification
                     send_email(
                         subject="Bin Full Notification - Immediate Collection Required",
                         body=f"Dear Trash Collection Team,\n\nThis is to inform you that Bin {bin_no} is now full and requires immediate collection.\n\nThank you for your prompt attention to this matter.\n\nBest regards,\nSupervisor"
                     )
+
+                    # insert_binfill_time(bin_no)
+
                     # Reset fill level to a lower value
-                    ref.child(bin_no).update({
-                        'Bin_Level': random.randint(0, 10),
-                        'Timestamp': time.time()
-                    })
+                    # ref.child(bin_no).update({
+                    #     'Bin_Level': random.randint(0, 1),
+                    #     'Timestamp': time.time()
+                    # })
 
-        # Transform data into a list of dictionaries
-        result = []
-        if data:
-            for bin_no, record in data.items():
-                result.append({
-                    "bin_no": bin_no,
-                    "Bin_Level": record.get('Bin_Level'),
-                    "Timestamp": record.get('Timestamp', time.time())
-                })
-
+        print("Data sent to frontend:", result)
         return jsonify(result)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("Error occurred:", str(e))
+        return jsonify({"error": "Server Error", "message": str(e)}), 500
 
+bin_processed = {}
+def get_bin_filltime() :
+    try:
+        ref = db.reference()
+        data = ref.get()
+
+        if data:
+            for bin_no, record in data.items():
+                bin_level = record.get('Bin_Level')
+                print(f"Checking bin_no: {bin_no}, Bin_Level: {bin_level}")
+
+                if bin_level >= 14:
+                    if bin_no not in bin_processed or bin_processed[bin_no] is None:
+                        insert_binfill_time(bin_no)
+                        bin_processed[bin_no] = True
+                        print(f"Bin {bin_no} processed and inserted.")
+                    else:
+                        print(f"Bin {bin_no} already processed.")
+                else:
+                    if bin_no in bin_processed:
+                        if bin_processed[bin_no] is not None:
+                            print(f"Bin {bin_no} level below 14, resetting tracking.")
+                        bin_processed[bin_no] = None
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+def periodic_bin_filltime_check():
+    while True:
+        get_bin_filltime()
+        time.sleep(20)
 
 @app.route('/collector', methods=['GET'])
 def getCollectors():
@@ -418,6 +463,7 @@ def getCollectors():
     if isinstance(collectors, dict) and "error" in collectors:
         return jsonify(collectors), 500
     return jsonify(collectors)
+
 
 @app.route('/collector/register', methods=['POST', 'GET'])
 def register_collector():
@@ -429,16 +475,18 @@ def register_collector():
     except Exception as e:
         return jsonify({"message": "Internal server error"}), 500
 
+
 @app.route('/collector/delete', methods=['DELETE'])
 def delete_collector():
     collector_mail = request.args.get('email')
-    if(collector_mail):
+    if (collector_mail):
         result = deleteCollector(collector_mail)
         if result:
             return jsonify({"message": "Collector deleted successfully"}), 200
         else:
             return jsonify({"message": "Collector not found"}), 404
         return jsonify({"message": "Invalid request"}), 400
+
 
 @app.route('/collector/update', methods=['PUT'])
 def update_collector():
@@ -458,12 +506,14 @@ def update_collector():
     else:
         return jsonify({"error": "Invalid data"}), 400
 
+
 @app.route('/meta/bin', methods=['GET'])
 def get_bin_meta():
     binMeta, status_code = getBinMetadata()
     if not isinstance(binMeta, list):
         binMeta = []
     return jsonify(binMeta), status_code
+
 
 @app.route('/meta/bin/update', methods=['PUT'])
 def update_bin_meta():
@@ -483,6 +533,7 @@ def update_bin_meta():
     else:
         return jsonify({"error": "Invalid data"}), 400
 
+
 @app.route('/meta/bin/delete', methods=['DELETE'])
 def delete_bin_meta():
     bin_no = request.args.get('bin_no')
@@ -494,7 +545,8 @@ def delete_bin_meta():
             return jsonify({"message": "Collector not found"}), 404
         return jsonify({"message": "Invalid request"}), 400
 
-@app.route('/meta/bin/add',methods=['POST'])
+
+@app.route('/meta/bin/add', methods=['POST'])
 def add_bin_meta():
     try:
         data = request.get_json()
@@ -503,20 +555,12 @@ def add_bin_meta():
     except Exception as e:
         return jsonify({"message": "Internal server error"}), 500
 
+
 if __name__ == "__main__":
     data_thread = threading.Thread(target=simulate_data)
     data_thread.daemon = True  # Allows the thread to exit when the main program exits
     data_thread.start()
+
+    periodic_bin_filltime_check()
+
     app.run(debug=True)
-
-    # aneballo123@
-    #  test.autho.124@gmail.com
-
-
-
-
-
-
-
-
-

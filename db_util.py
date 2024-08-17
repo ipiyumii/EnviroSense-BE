@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import mysql.connector
 import pandas as pd
 from werkzeug.security import generate_password_hash
@@ -129,8 +131,46 @@ def get_user(username):
 
     try:
         cur = connection.cursor(dictionary=True)
-        query = "SELECT a.email,a.name,a.username,a.password,a.phone, p.file_path FROM Admin a LEFT JOIN profile_pictures p ON a.username = p.username WHERE a.username = %s;"
+        # query = "SELECT a.email,a.name,a.username,a.password,a.phone, p.file_path FROM Admin a LEFT JOIN profile_pictures p ON a.username = p.username WHERE a.username = %s;"
+        query = """
+                    SELECT 
+                        a.email, a.name, a.username, a.password, a.phone, 
+                        COALESCE(p.file_path, '') AS file_path
+                    FROM Admin a 
+                    LEFT JOIN profile_pictures p ON a.username = p.username 
+                    WHERE a.username = %s;
+                """
         cur.execute(query, (username,))
+        userData = cur.fetchone()
+
+        if userData:
+            return userData
+        else:
+            return False
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    finally:
+        if cur:
+            cur.close()
+        if connection and connection.is_connected():
+            connection.close()
+
+def get_user_by_email(email):
+    connection = db_con()
+    if not connection:
+        return [], 500
+
+    try:
+        cur = connection.cursor(dictionary=True)
+        query = """
+                    SELECT a.email, a.name, a.username, a.password, a.phone, p.file_path 
+                    FROM Admin a 
+                    LEFT JOIN profile_pictures p ON a.email = p.username
+                    WHERE a.email = %s;
+                """
+        cur.execute(query, (email,))
         userData = cur.fetchone()
 
         if userData:
@@ -462,14 +502,14 @@ def delete_bin_metadata(bin_no):
     try:
         with connection.cursor(dictionary=True) as cur:
             query = 'DELETE FROM `bins` WHERE bin_no = %s'
-            cur.execute(query, bin_no)
+            cur.execute(query, (bin_no,))
 
         connection.commit()
-        return {"message": "User registered"}, 200
+        return {"message": "Collector deleted successfully"}, 200
 
     except Exception as e:
         print(f"Error: {e}")
-        return {"message": "error occurred while inserting user"}, 500
+        return {"message": "Error occurred while deleting collector"}, 500
     finally:
         if cur:
             cur.close()
@@ -500,3 +540,22 @@ def insert_bin_metadata(data):
             cur.close()
         if connection and connection.is_connected():
             connection.close()
+
+def insert_binfill_time(bin_no):
+    connection = db_con()
+    if not connection:
+        return [], 500
+
+    try:
+        with connection.cursor(dictionary=True) as cur:
+            current_time = datetime.now()
+
+            sql_query = "INSERT INTO bin_fill_data (bin_no, timestamp) VALUES (%s, %s)"
+            cur.execute(sql_query, (bin_no, current_time))
+            connection.commit()
+            print(f"Inserted bin_no: {bin_no} with current timestamp into database.")
+
+    except Exception as e:
+        print(f"Error inserting data: {e}")
+    finally:
+        connection.close()
