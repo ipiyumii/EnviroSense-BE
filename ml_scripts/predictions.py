@@ -48,7 +48,7 @@ def round_to_nearest_10_minutes(dt):
         dt = dt + timedelta(hours=1)
     return dt.replace(minute=rounded_minutes, second=0, microsecond=0)
 
-def predict_fill_times(df,min_count=10):
+def predict_fill_times(df,min_count=14):
     df.index = pd.to_datetime(df.index)
     if not isinstance(df.index, pd.DatetimeIndex):
         raise ValueError("Index is not a DatetimeIndex")

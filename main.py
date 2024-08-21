@@ -1,3 +1,5 @@
+import math
+
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity, create_access_token
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -40,34 +42,24 @@ jwt = JWTManager(app)
 
 cred = credentials.Certificate("firebase-credentials.json")
 firebase_admin.initialize_app(cred, {
-    "databaseURL": "https://envirosense-5ef53-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    "databaseURL": "https://waste-management-767e9-default-rtdb.asia-southeast1.firebasedatabase.app/"
 })
 
-
-def simulate_data():
-    bins = ['B8:27:EB:98:76:54', 'CC:7B:5C:34:9F:1C']
-
-    # bin_levels = {bin_no: 0 for bin_no in bins}
-    # bin_levels = {bin_no: 15 for bin_no in bins}
-
-    while True:
-        for bin_no in bins:
-            # bin_levels[bin_no] += random.randint(1, 10)
-            bin_level_cm = random.randint(1, 15)
-            bin_levels[bin_no] = bin_level_cm
-            if bin_levels[bin_no] > 15:
-                bin_levels[bin_no] = 15
-
-            ref = db.reference(f'{bin_no}')
-            ref.set({
-                'Bin_Level': bin_levels[bin_no],
-                'Timestamp': time.time()
-            })
-
-            print(f"bin level: Bin = {bin_no}, Fill Level = {bin_levels[bin_no]}")
-
-        time.sleep(30)
-
+# def simulate_data():
+#     bins = ['CC:7B:5C:36:DE:E8', 'CC:7B:5C:34:9F:1C']
+#     while True:
+#         for bin_no in bins:
+#             bin_level_cm = random.randint(1, 15)
+#             bin_levels[bin_no] = bin_level_cm
+#             if bin_levels[bin_no] > 15:
+#                 bin_levels[bin_no] = 15
+#
+#             ref = db.reference(f'{bin_no}')
+#             ref.set({
+#                 'Bin_Level': bin_levels[bin_no],
+#                 'Timestamp': time.time()
+#             })
+#         time.sleep(30)
 
 # handle registration
 @app.route('/register', methods=['POST', 'GET'])
@@ -336,8 +328,12 @@ def get_gmail_service():
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                print(f"Error refreshing token: {e}")
+                creds = None
+        if not creds:
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
             creds = flow.run_local_server(port=0)
 
@@ -345,7 +341,6 @@ def get_gmail_service():
             token.write(creds.to_json())
 
     return build('gmail', 'v1', credentials=creds)
-
 
 def create_message(sender, to, subject, body):
     message = MIMEMultipart()
@@ -377,12 +372,6 @@ def send_email(subject, body):
         if hasattr(error, 'content'):
             print(f'Response content: {error.content.decode()}')
 
-
-bin_levels = {
-    "A4:CF:12:34:56:78": 0,
-    "B8:27:EB:98:76:54": 0
-}
-
 @app.route('/realtime-data', methods=['GET'])
 def get_realtime_data():
     try:
@@ -395,7 +384,7 @@ def get_realtime_data():
             for bin_no, record in data.items():
                 fill_level = record.get('Bin_Level')
                 print(f"Processing bin_no: {bin_no}, fill_level: {fill_level}")
-                bin_level_percent = int((fill_level / 15) * 100)
+                bin_level_percent = math.ceil((fill_level / 13) * 100)
 
                 result.append({
                     "bin_no": bin_no,
@@ -403,7 +392,7 @@ def get_realtime_data():
                     "Timestamp": time.time()
                 })
 
-                if fill_level >= 14:
+                if fill_level >= 13:
                     # Send email notification
                     send_email(
                         subject="Bin Full Notification - Immediate Collection Required",
@@ -425,8 +414,9 @@ def get_realtime_data():
         print("Error occurred:", str(e))
         return jsonify({"error": "Server Error", "message": str(e)}), 500
 
+
 bin_processed = {}
-def get_bin_filltime() :
+def get_bin_filltime():
     try:
         ref = db.reference()
         data = ref.get()
@@ -434,21 +424,15 @@ def get_bin_filltime() :
         if data:
             for bin_no, record in data.items():
                 bin_level = record.get('Bin_Level')
-                print(f"Checking bin_no: {bin_no}, Bin_Level: {bin_level}")
 
-                if bin_level >= 14:
+                if bin_level >= 13:
                     if bin_no not in bin_processed or bin_processed[bin_no] is None:
                         insert_binfill_time(bin_no)
                         bin_processed[bin_no] = True
-                        print(f"Bin {bin_no} processed and inserted.")
-                    else:
-                        print(f"Bin {bin_no} already processed.")
-                else:
-                    if bin_no in bin_processed:
-                        if bin_processed[bin_no] is not None:
-                            print(f"Bin {bin_no} level below 14, resetting tracking.")
-                        bin_processed[bin_no] = None
 
+                elif bin_level <= 2:
+                    if bin_no in bin_processed:
+                        bin_processed[bin_no] = None
     except Exception as e:
         print(f"An error occurred: {e}")
 
@@ -557,10 +541,12 @@ def add_bin_meta():
 
 
 if __name__ == "__main__":
-    data_thread = threading.Thread(target=simulate_data)
-    data_thread.daemon = True  # Allows the thread to exit when the main program exits
-    data_thread.start()
+    # data_thread = threading.Thread(target=simulate_data)
+    # data_thread.daemon = True
+    # data_thread.start()
 
-    periodic_bin_filltime_check()
+    check_thread = threading.Thread(target=periodic_bin_filltime_check)
+    check_thread.daemon = True
+    check_thread.start()
 
     app.run(debug=True)
