@@ -42,24 +42,26 @@ jwt = JWTManager(app)
 
 cred = credentials.Certificate("firebase-credentials.json")
 firebase_admin.initialize_app(cred, {
-    "databaseURL": "https://waste-management-767e9-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    "databaseURL": "https://envirosense-5ef53-default-rtdb.asia-southeast1.firebasedatabase.app/"
 })
 
-# def simulate_data():
-#     bins = ['CC:7B:5C:36:DE:E8', 'CC:7B:5C:34:9F:1C']
-#     while True:
-#         for bin_no in bins:
-#             bin_level_cm = random.randint(1, 15)
-#             bin_levels[bin_no] = bin_level_cm
-#             if bin_levels[bin_no] > 15:
-#                 bin_levels[bin_no] = 15
-#
-#             ref = db.reference(f'{bin_no}')
-#             ref.set({
-#                 'Bin_Level': bin_levels[bin_no],
-#                 'Timestamp': time.time()
-#             })
-#         time.sleep(30)
+def simulate_data():
+    bins = ['CC:7B:5C:36:DE:E8', 'CC:7B:5C:34:9F:1C']
+    bin_levels = {bin_no: 0 for bin_no in bins}
+    while True:
+        for bin_no in bins:
+            bin_level_cm = random.randint(1, 15)
+            bin_levels[bin_no] = bin_level_cm
+            if bin_levels[bin_no] > 15:
+                bin_levels[bin_no] = 15
+
+            ref = db.reference(f'{bin_no}')
+            ref.set({
+                'Bin_Level': bin_levels[bin_no],
+                'Timestamp': time.time()
+            })
+            print(f"Added data: Bin = {bin_no}, Fill Level = {bin_levels[bin_no]}")
+        time.sleep(30)
 
 # handle registration
 @app.route('/register', methods=['POST', 'GET'])
@@ -541,9 +543,9 @@ def add_bin_meta():
 
 
 if __name__ == "__main__":
-    # data_thread = threading.Thread(target=simulate_data)
-    # data_thread.daemon = True
-    # data_thread.start()
+    data_thread = threading.Thread(target=simulate_data)
+    data_thread.daemon = True
+    data_thread.start()
 
     check_thread = threading.Thread(target=periodic_bin_filltime_check)
     check_thread.daemon = True
